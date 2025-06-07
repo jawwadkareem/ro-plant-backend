@@ -12,7 +12,6 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-// const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ro-plant-management';
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://karimjawwad09:cs21125@cluster0.ckfv5.mongodb.net/roplant?retryWrites=true&w=majority&appName=Cluster0';
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
@@ -116,12 +115,11 @@ const initializeAdmin = async () => {
   }
 };
 
-app.get('/',async(req,res)=>{
-    res.send('hello')
-})
+app.get('/', async (req, res) => {
+  res.send('hellooo');
+});
 
 // Auth Routes
-
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -231,7 +229,7 @@ app.post('/api/sales', authenticateToken, async (req, res) => {
     const sale = new Sale(req.body);
     await sale.save();
 
-    // Update customer's total purchases if customer is specified
+    // Update customer's total purchases if customerId is specified
     if (sale.customerId) {
       await Customer.findByIdAndUpdate(sale.customerId, {
         $inc: { totalPurchases: sale.totalBill },
@@ -404,7 +402,7 @@ app.get('/api/reports/dashboard', authenticateToken, async (req, res) => {
       dailyProfit,
       totalCustomers,
       pendingCreditors,
-      salesGrowth: 0, // Calculate based on previous day
+      salesGrowth: 0,
       expensesGrowth: 0,
       profitGrowth: 0
     });
@@ -521,13 +519,50 @@ app.get('/api/reports/profit', authenticateToken, async (req, res) => {
   try {
     const { period } = req.query;
     
-    // For now, return mock data
     res.json({
       daily: [],
       avgDaily: 0
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// New History Route
+app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.params.id;
+
+    // Verify customer exists
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    // Fetch sales history for the customer
+    const history = await Sale.find({ customerId })
+      .sort({ date: -1 })
+      .limit(10)
+      .lean();
+
+    if (!history.length) {
+      return res.status(200).json([]);
+    }
+
+    // Format the response to match frontend expectations
+    const formattedHistory = history.map(sale => ({
+      _id: sale._id,
+      saleId: sale._id, // Using sale._id as saleId (adjust if you have a different field)
+      date: sale.date,
+      amount: sale.totalBill || 0,
+      units: sale.units || 0,
+      notes: sale.notes || '-'
+    }));
+
+    res.status(200).json(formattedHistory);
+  } catch (error) {
+    console.error('Error fetching customer history:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
