@@ -30,9 +30,9 @@ const User = mongoose.model('User', userSchema);
 // Customer Schema
 const customerSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  phone: { type: String, required: true },
+  phone: { type: String},
   email: { type: String },
-  address: { type: String, required: true },
+  address: { type: String},
   notes: { type: String },
   totalPurchases: { type: Number, default: 0 },
   lastPurchase: { type: Date }
