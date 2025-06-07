@@ -549,13 +549,14 @@ app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
       return res.status(200).json([]);
     }
 
-    // Format the response to match frontend expectations
+    // Format the response to match frontend expectations, including counterCash
     const formattedHistory = history.map(sale => ({
       _id: sale._id,
       saleId: sale._id, // Using sale._id as saleId (adjust if you have a different field)
       date: sale.date,
       amount: sale.totalBill || 0,
       units: sale.units || 0,
+      counterCash: sale.counterCash || 0, // Added counterCash, default to 0 if not present
       notes: sale.notes || '-'
     }));
 
