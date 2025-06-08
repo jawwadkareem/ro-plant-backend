@@ -116,7 +116,7 @@ const initializeAdmin = async () => {
 };
 
 app.get('/', async (req, res) => {
-  res.send('hellooo');
+  res.send('abc');
 });
 
 // Auth Routes
