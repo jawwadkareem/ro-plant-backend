@@ -30,9 +30,9 @@ const User = mongoose.model('User', userSchema);
 // Customer Schema
 const customerSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  phone: { type: String },
+  phone: { type: String},
   email: { type: String },
-  address: { type: String },
+  address: { type: String},
   notes: { type: String },
   totalPurchases: { type: Number, default: 0 },
   lastPurchase: { type: Date }
@@ -189,9 +189,6 @@ app.put('/api/customers/:id', authenticateToken, async (req, res) => {
       req.body,
       { new: true }
     );
-    if (!customer) {
-      return res.status(404).json({ error: 'Customer not found' });
-    }
     res.json(customer);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -232,6 +229,7 @@ app.post('/api/sales', authenticateToken, async (req, res) => {
     const sale = new Sale(req.body);
     await sale.save();
 
+    // Update customer's total purchases if customerId is specified
     if (sale.customerId) {
       await Customer.findByIdAndUpdate(sale.customerId, {
         $inc: { totalPurchases: sale.totalBill },
@@ -247,17 +245,11 @@ app.post('/api/sales', authenticateToken, async (req, res) => {
 
 app.put('/api/sales/:id', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ error: 'Invalid sale ID' });
-    }
     const sale = await Sale.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true }
     );
-    if (!sale) {
-      return res.status(404).json({ error: 'Sale not found' });
-    }
     res.json(sale);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -289,7 +281,7 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
     const expenses = await Expense.find(query).sort({ createdAt: -1 });
     res.json(expenses);
   } catch (error) {
-    res.status(400).json({ error: error.message }); // Changed to 400 for client errors
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -299,23 +291,17 @@ app.post('/api/expenses', authenticateToken, async (req, res) => {
     await expense.save();
     res.status(201).json(expense);
   } catch (error) {
-    res.status(400).json({ error: error.message }); // Changed to 400 for client errors
+    res.status(500).json({ error: error.message });
   }
 });
 
 app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ error: 'Invalid expense ID' });
-    }
     const expense = await Expense.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true }
     );
-    if (!expense) {
-      return res.status(404).json({ error: 'Expense not found' });
-    }
     res.json(expense);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -347,23 +333,17 @@ app.post('/api/creditors', authenticateToken, async (req, res) => {
     await creditor.save();
     res.status(201).json(creditor);
   } catch (error) {
-    res.status(400).json({ error: error.message }); // Changed to 400 for client errors
+    res.status(500).json({ error: error.message });
   }
 });
 
 app.put('/api/creditors/:id', authenticateToken, async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isRequired(req.params.id)) {
-      return res.status(400).json({ error: 'Invalid creditor ID' });
-    }
     const creditor = await Creditor.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true }
     );
-    if (!creditor) {
-      return res.status(404).json({ error: 'Creditor not found' });
-    }
     res.json(creditor);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -377,9 +357,6 @@ app.patch('/api/creditors/:id/pay', authenticateToken, async (req, res) => {
       { isPaid: true, paidDate: new Date() },
       { new: true }
     );
-    if (!creditor) {
-      return res.status(404).json({ error: 'Creditor not found' });
-    }
     res.json(creditor);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -556,11 +533,13 @@ app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
   try {
     const customerId = req.params.id;
 
+    // Verify customer exists
     const customer = await Customer.findById(customerId);
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
     }
 
+    // Fetch sales history for the customer
     const history = await Sale.find({ customerId })
       .sort({ date: -1 })
       .limit(10)
@@ -570,13 +549,14 @@ app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
       return res.status(200).json([]);
     }
 
+    // Format the response to match frontend expectations, including counterCash
     const formattedHistory = history.map(sale => ({
       _id: sale._id,
-      saleId: sale._id,
+      saleId: sale._id, // Using sale._id as saleId (adjust if you have a different field)
       date: sale.date,
       amount: sale.totalBill || 0,
       units: sale.units || 0,
-      counterCash: sale.counterCash || 0,
+      counterCash: sale.counterCash || 0, // Added counterCash, default to 0 if not present
       notes: sale.notes || '-'
     }));
 
