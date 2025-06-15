@@ -595,7 +595,7 @@ const PORT = process.env.PORT || 3001;
 // CORS Configuration
 const allowedOrigins = [
   'http://localhost:3000', // Development origin
-  'https://your-frontend-domain.com' // Replace with your deployed frontend URL
+  'https://ro-plant-frontend.vercel.app' // Replace with your deployed frontend URL
 ];
 app.use(cors({
   origin: function (origin, callback) {
