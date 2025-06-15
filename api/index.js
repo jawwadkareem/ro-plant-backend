@@ -608,10 +608,19 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Global Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ message: 'Internal server error', error: err.message });
+});
+
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ro-plant', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+}).catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1); // Exit if connection fails
 });
 const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
@@ -679,7 +688,7 @@ app.post('/api/auth/login', [
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '1h' });
     res.json({ token });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -691,7 +700,7 @@ app.get('/api/auth/verify', async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     res.json({ valid: true, userId: decoded.userId });
   } catch (error) {
-    res.status(401).json({ message: 'Invalid token', error });
+    res.status(401).json({ message: 'Invalid token', error: error.message });
   }
 });
 
@@ -709,7 +718,7 @@ app.patch('/api/users/reset-password', [
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -719,7 +728,7 @@ app.get('/api/customers', async (req, res) => {
     const customers = await Customer.find();
     res.json(customers);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -734,7 +743,7 @@ app.post('/api/customers', [
     const customer = await Customer.create({ name, phone, email, address, notes, unitRate });
     res.status(201).json(customer);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -751,7 +760,7 @@ app.put('/api/customers/:id', [
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
     res.json(customer);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -762,7 +771,7 @@ app.delete('/api/customers/:id', async (req, res) => {
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
     res.json({ message: 'Customer deleted successfully' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -781,7 +790,7 @@ app.get('/api/customers/:id/history', async (req, res) => {
     }));
     res.json(history);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -796,7 +805,7 @@ app.get('/api/sales', async (req, res) => {
       customerName: sale.customerId ? sale.customerId.name : sale.customerName,
     })));
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -820,7 +829,7 @@ app.post('/api/sales', [
     }
     res.status(201).json(sale);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -839,7 +848,7 @@ app.put('/api/sales/:id', [
     if (!sale) return res.status(404).json({ message: 'Sale not found' });
     res.json(sale);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -850,7 +859,7 @@ app.delete('/api/sales/:id', async (req, res) => {
     if (!sale) return res.status(404).json({ message: 'Sale not found' });
     res.json({ message: 'Sale deleted successfully' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -864,7 +873,7 @@ app.get('/api/sales/daily-summary', async (req, res) => {
     const totalUnits = sales.reduce((sum, sale) => sum + sale.units, 0);
     res.json({ totalSales, totalCash, totalUnits });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -874,7 +883,7 @@ app.get('/api/expenses', async (req, res) => {
     const expenses = await Expense.find();
     res.json(expenses);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -891,7 +900,7 @@ app.post('/api/expenses', [
     const expense = await Expense.create({ date, amount, category, description });
     res.status(201).json(expense);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -910,7 +919,7 @@ app.put('/api/expenses/:id', [
     if (!expense) return res.status(404).json({ message: 'Expense not found' });
     res.json(expense);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -921,7 +930,7 @@ app.delete('/api/expenses/:id', async (req, res) => {
     if (!expense) return res.status(404).json({ message: 'Expense not found' });
     res.json({ message: 'Expense deleted successfully' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -950,7 +959,7 @@ app.get('/api/reports/dashboard', async (req, res) => {
       profitGrowth: 0, // Placeholder, requires historical data
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -971,7 +980,7 @@ app.get('/api/reports/profit', async (req, res) => {
 
     res.json({ profit, totalSales, totalExpenses });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -983,7 +992,7 @@ app.get('/api/reports/sales', async (req, res) => {
     });
     res.json(sales);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -995,7 +1004,7 @@ app.get('/api/reports/expenses', async (req, res) => {
     });
     res.json(expenses);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -1004,7 +1013,7 @@ app.get('/api/reports/assets', async (req, res) => {
     // Placeholder for assets/liabilities calculation
     res.json({ assets: 0, liabilities: 0 });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
