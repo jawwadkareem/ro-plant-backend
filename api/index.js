@@ -587,6 +587,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
+require('dotenv').config(); // Add dotenv for environment variables
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -615,7 +616,8 @@ app.use((err, req, res, next) => {
 });
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ro-plant', {
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://karimjawwad09:cs21125@cluster0.ckfv5.mongodb.net/roplant?retryWrites=true&w=majority&appName=Cluster0';
+mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 }).catch(err => {
@@ -624,13 +626,13 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ro-plant'
 });
 const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
-db.once('open', () => console.log('Connected to MongoDB'));
 
 // Schemas
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-});
+  role: { type: String, default: 'admin' }
+}, { timestamps: true });
 const User = mongoose.model('User', userSchema);
 
 const customerSchema = new mongoose.Schema({
@@ -642,8 +644,8 @@ const customerSchema = new mongoose.Schema({
   unitRate: { type: Number, default: 0 },
   totalPurchases: { type: Number, default: 0 },
   lastPurchase: Date,
-  createdAt: { type: Date, default: Date.now },
-});
+  createdAt: { type: Date, default: Date.now }
+}, { timestamps: true });
 const Customer = mongoose.model('Customer', customerSchema);
 
 const saleSchema = new mongoose.Schema({
@@ -657,18 +659,59 @@ const saleSchema = new mongoose.Schema({
   notes: String,
   isCreditor: { type: Boolean, default: false },
   amountLeft: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now },
-});
+  createdAt: { type: Date, default: Date.now }
+}, { timestamps: true });
 const Sale = mongoose.model('Sale', saleSchema);
 
 const expenseSchema = new mongoose.Schema({
   date: { type: Date, required: true },
   amount: { type: Number, required: true },
-  category: { type: String, required: true },
+  category: { type: String, required: true }, // Changed from 'type' to 'category' to match uncommented code
   description: String,
-  createdAt: { type: Date, default: Date.now },
-});
+  createdAt: { type: Date, default: Date.now }
+}, { timestamps: true });
 const Expense = mongoose.model('Expense', expenseSchema);
+
+// Auth Middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Initialize default admin user
+const initializeAdmin = async () => {
+  try {
+    const adminExists = await User.findOne({ username: 'admin' });
+    if (!adminExists) {
+      const hashedPassword = await bcrypt.hash('admin123', 10);
+      await User.create({
+        username: 'admin',
+        password: hashedPassword,
+        role: 'admin'
+      });
+      console.log('Default admin user created');
+    }
+  } catch (error) {
+    console.error('Error initializing admin:', error);
+  }
+};
+
+// Routes
+app.get('/', (req, res) => {
+  res.send('abc');
+});
 
 // Auth Routes
 app.post('/api/auth/login', [
@@ -685,22 +728,26 @@ app.post('/api/auth/login', [
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '1h' });
-    res.json({ token });
+    const token = jwt.sign(
+      { userId: user._id, username: user.username, role: user.role },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+    res.json({
+      token,
+      user: { id: user._id, username: user.username, role: user.role }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-app.get('/api/auth/verify', async (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'No token provided' });
-
+app.get('/api/auth/verify', authenticateToken, async (req, res) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    res.json({ valid: true, userId: decoded.userId });
+    const user = await User.findById(req.user.userId).select('-password');
+    res.json(user);
   } catch (error) {
-    res.status(401).json({ message: 'Invalid token', error: error.message });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -723,18 +770,16 @@ app.patch('/api/users/reset-password', [
 });
 
 // Customer Routes
-app.get('/api/customers', async (req, res) => {
+app.get('/api/customers', authenticateToken, async (req, res) => {
   try {
-    const customers = await Customer.find();
+    const customers = await Customer.find().sort({ createdAt: -1 });
     res.json(customers);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-app.post('/api/customers', [
-  body('name').notEmpty().trim(),
-], async (req, res) => {
+app.post('/api/customers', authenticateToken, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
@@ -747,9 +792,7 @@ app.post('/api/customers', [
   }
 });
 
-app.put('/api/customers/:id', [
-  body('name').notEmpty().trim(),
-], async (req, res) => {
+app.put('/api/customers/:id', authenticateToken, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
@@ -764,7 +807,7 @@ app.put('/api/customers/:id', [
   }
 });
 
-app.delete('/api/customers/:id', async (req, res) => {
+app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
     const customer = await Customer.findByIdAndDelete(id);
@@ -775,7 +818,7 @@ app.delete('/api/customers/:id', async (req, res) => {
   }
 });
 
-app.get('/api/customers/:id/history', async (req, res) => {
+app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
     const sales = await Sale.find({ customerId: id }).sort({ date: -1 });
@@ -795,7 +838,7 @@ app.get('/api/customers/:id/history', async (req, res) => {
 });
 
 // Sales Routes
-app.get('/api/sales', async (req, res) => {
+app.get('/api/sales', authenticateToken, async (req, res) => {
   const { date } = req.query;
   try {
     const query = date ? { date: new Date(date) } : {};
@@ -809,10 +852,7 @@ app.get('/api/sales', async (req, res) => {
   }
 });
 
-app.post('/api/sales', [
-  body('date').notEmpty().isISO8601(),
-  body('totalBill').notEmpty().isFloat({ min: 0 }),
-], async (req, res) => {
+app.post('/api/sales', authenticateToken, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
@@ -833,10 +873,7 @@ app.post('/api/sales', [
   }
 });
 
-app.put('/api/sales/:id', [
-  body('date').notEmpty().isISO8601(),
-  body('totalBill').notEmpty().isFloat({ min: 0 }),
-], async (req, res) => {
+app.put('/api/sales/:id', authenticateToken, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
@@ -852,7 +889,7 @@ app.put('/api/sales/:id', [
   }
 });
 
-app.delete('/api/sales/:id', async (req, res) => {
+app.delete('/api/sales/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
     const sale = await Sale.findByIdAndDelete(id);
@@ -863,7 +900,7 @@ app.delete('/api/sales/:id', async (req, res) => {
   }
 });
 
-app.get('/api/sales/daily-summary', async (req, res) => {
+app.get('/api/sales/daily-summary', authenticateToken, async (req, res) => {
   const { date } = req.query;
   try {
     const query = date ? { date: new Date(date) } : {};
@@ -878,20 +915,18 @@ app.get('/api/sales/daily-summary', async (req, res) => {
 });
 
 // Expense Routes
-app.get('/api/expenses', async (req, res) => {
+app.get('/api/expenses', authenticateToken, async (req, res) => {
+  const { date } = req.query;
   try {
-    const expenses = await Expense.find();
+    const query = date ? { date: new Date(date) } : {};
+    const expenses = await Expense.find(query).sort({ createdAt: -1 });
     res.json(expenses);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-app.post('/api/expenses', [
-  body('date').notEmpty().isISO8601(),
-  body('amount').notEmpty().isFloat({ min: 0 }),
-  body('category').notEmpty().trim(),
-], async (req, res) => {
+app.post('/api/expenses', authenticateToken, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
@@ -904,11 +939,7 @@ app.post('/api/expenses', [
   }
 });
 
-app.put('/api/expenses/:id', [
-  body('date').notEmpty().isISO8601(),
-  body('amount').notEmpty().isFloat({ min: 0 }),
-  body('category').notEmpty().trim(),
-], async (req, res) => {
+app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
@@ -923,7 +954,7 @@ app.put('/api/expenses/:id', [
   }
 });
 
-app.delete('/api/expenses/:id', async (req, res) => {
+app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
     const expense = await Expense.findByIdAndDelete(id);
@@ -935,18 +966,28 @@ app.delete('/api/expenses/:id', async (req, res) => {
 });
 
 // Reports Routes
-app.get('/api/reports/dashboard', async (req, res) => {
+app.get('/api/reports/dashboard', authenticateToken, async (req, res) => {
   try {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
-    const sales = await Sale.find({ date: today });
-    const expenses = await Sale.find({ date: today });
-    const totalSales = sales.reduce((sum, sale) => sum + sale.totalBill, 0);
-    const totalExpenses = expenses.reduce((sum, sale) => sum + sale.counterCash, 0); // Assuming expenses are tracked as cash outflows
+    const [todaySales, todayExpenses, totalCustomers, pendingCreditors] = await Promise.all([
+      Sale.aggregate([
+        { $match: { date: { $gte: startOfDay, $lte: endOfDay } } },
+        { $group: { _id: null, total: { $sum: '$totalBill' } } }
+      ]),
+      Expense.aggregate([
+        { $match: { date: { $gte: startOfDay, $lte: endOfDay } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]),
+      Customer.countDocuments(),
+      Sale.countDocuments({ isCreditor: true, amountLeft: { $gt: 0 } })
+    ]);
+
+    const totalSales = todaySales[0]?.total || 0;
+    const totalExpenses = todayExpenses[0]?.total || 0;
     const dailyProfit = totalSales - totalExpenses;
-    const totalCustomers = await Customer.countDocuments();
-    const pendingCreditors = await Sale.countDocuments({ isCreditor: true, amountLeft: { $gt: 0 } });
 
     res.json({
       totalSales,
@@ -954,16 +995,118 @@ app.get('/api/reports/dashboard', async (req, res) => {
       dailyProfit,
       totalCustomers,
       pendingCreditors,
-      salesGrowth: 0, // Placeholder, requires historical data
-      expensesGrowth: 0, // Placeholder, requires historical data
-      profitGrowth: 0, // Placeholder, requires historical data
+      salesGrowth: 0,
+      expensesGrowth: 0,
+      profitGrowth: 0
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-app.get('/api/reports/profit', async (req, res) => {
+app.get('/api/reports/sales', authenticateToken, async (req, res) => {
+  const { startDate, endDate } = req.query;
+  try {
+    const sales = await Sale.aggregate([
+      {
+        $match: {
+          date: {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+          }
+        }
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+          amount: { $sum: '$totalBill' },
+          units: { $sum: '$units' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const total = await Sale.aggregate([
+      {
+        $match: {
+          date: {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$totalBill' }
+        }
+      }
+    ]);
+
+    res.json({
+      daily: sales.map(s => ({ date: s._id, amount: s.amount, units: s.units })),
+      total: total[0]?.total || 0
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+app.get('/api/reports/expenses', authenticateToken, async (req, res) => {
+  const { startDate, endDate } = req.query;
+  try {
+    const expenses = await Expense.aggregate([
+      {
+        $match: {
+          date: {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+          }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+            category: '$category'
+          },
+          amount: { $sum: '$amount' }
+        }
+      },
+      { $sort: { '_id.date': 1 } }
+    ]);
+
+    const total = await Expense.aggregate([
+      {
+        $match: {
+          date: {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$amount' }
+        }
+      }
+    ]);
+
+    res.json({
+      daily: expenses.map(e => ({
+        date: e._id.date,
+        amount: e.amount,
+        category: e._id.category
+      })),
+      total: total[0]?.total || 0
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+app.get('/api/reports/profit', authenticateToken, async (req, res) => {
   const { period } = req.query;
   try {
     const today = new Date();
@@ -984,40 +1127,13 @@ app.get('/api/reports/profit', async (req, res) => {
   }
 });
 
-app.get('/api/reports/sales', async (req, res) => {
-  const { startDate, endDate } = req.query;
-  try {
-    const sales = await Sale.find({
-      date: { $gte: new Date(startDate), $lte: new Date(endDate) },
-    });
-    res.json(sales);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-app.get('/api/reports/expenses', async (req, res) => {
-  const { startDate, endDate } = req.query;
-  try {
-    const expenses = await Expense.find({
-      date: { $gte: new Date(startDate), $lte: new Date(endDate) },
-    });
-    res.json(expenses);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-app.get('/api/reports/assets', async (req, res) => {
-  try {
-    // Placeholder for assets/liabilities calculation
-    res.json({ assets: 0, liabilities: 0 });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
 // Start Server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+db.once('open', async () => {
+  console.log('Connected to MongoDB');
+  await initializeAdmin();
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
 });
+
+module.exports = app; // Export for Vercel
