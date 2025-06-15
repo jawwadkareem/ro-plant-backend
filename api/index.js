@@ -591,8 +591,18 @@ require('dotenv').config();
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// CORS Configuration
+const allowedOrigins = ['https://ro-plant-frontend.vercel.app'];
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true // Allow credentials (e.g., cookies, Authorization headers)
+}));
 app.use(express.json());
 
 // Global Error Handling Middleware
@@ -608,7 +618,7 @@ mongoose.connect(MONGODB_URI, {
   useUnifiedTopology: true,
 }).catch(err => {
   console.error('MongoDB connection error:', err);
-  process.exit(1); // Exit if connection fails
+  process.exit(1);
 });
 const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
@@ -619,7 +629,6 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, default: 'admin' }
 }, { timestamps: true });
-
 const User = mongoose.model('User', userSchema);
 
 const customerSchema = new mongoose.Schema({
@@ -631,7 +640,6 @@ const customerSchema = new mongoose.Schema({
   totalPurchases: { type: Number, default: 0 },
   lastPurchase: Date
 }, { timestamps: true });
-
 const Customer = mongoose.model('Customer', customerSchema);
 
 const salesSchema = new mongoose.Schema({
@@ -644,7 +652,6 @@ const salesSchema = new mongoose.Schema({
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
   notes: String
 }, { timestamps: true });
-
 const Sale = mongoose.model('Sale', salesSchema);
 
 const expenseSchema = new mongoose.Schema({
@@ -654,7 +661,6 @@ const expenseSchema = new mongoose.Schema({
   description: { type: String, required: true },
   notes: String
 }, { timestamps: true });
-
 const Expense = mongoose.model('Expense', expenseSchema);
 
 const creditorSchema = new mongoose.Schema({
@@ -667,7 +673,6 @@ const creditorSchema = new mongoose.Schema({
   paidDate: Date,
   notes: String
 }, { timestamps: true });
-
 const Creditor = mongoose.model('Creditor', creditorSchema);
 
 // Auth Middleware
@@ -694,11 +699,7 @@ const initializeAdmin = async () => {
     const adminExists = await User.findOne({ username: 'admin' });
     if (!adminExists) {
       const hashedPassword = await bcrypt.hash('admin123', 10);
-      await User.create({
-        username: 'admin',
-        password: hashedPassword,
-        role: 'admin'
-      });
+      await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
       console.log('Default admin user created');
     }
   } catch (error) {
@@ -1152,4 +1153,4 @@ db.once('open', async () => {
   });
 });
 
-module.exports = app; // Export for Vercel
+module.exports = app;
