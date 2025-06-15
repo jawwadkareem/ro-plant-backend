@@ -591,12 +591,25 @@ const { body, validationResult } = require('express-validator');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
+// CORS Configuration
+const allowedOrigins = [
+  'http://localhost:3000', // Development origin
+  'https://your-frontend-domain.com' // Replace with your deployed frontend URL
+];
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true // Allow credentials (e.g., cookies, Authorization headers)
+}));
 app.use(express.json());
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://karimjawwad09:cs21125@cluster0.ckfv5.mongodb.net/roplant?retryWrites=true&w=majority&appName=Cluster0', {
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ro-plant', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
