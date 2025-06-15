@@ -601,27 +601,29 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true // Allow credentials (e.g., cookies, Authorization headers)
+  credentials: true
 }));
 app.use(express.json());
 
 // Global Error Handling Middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Global error handler:', err.stack);
   res.status(500).json({ message: 'Internal server error', error: err.message });
 });
 
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://karimjawwad09:cs21125@cluster0.ckfv5.mongodb.net/roplant?retryWrites=true&w=majority&appName=Cluster0';
+console.log('Attempting to connect to MongoDB with URI:', MONGODB_URI);
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 }).catch(err => {
-  console.error('MongoDB connection error:', err);
+  console.error('MongoDB connection failed:', err.message);
   process.exit(1);
 });
 const db = mongoose.connection;
-db.on('error', console.error.bind(console, 'MongoDB connection error:'));
+db.on('error', err => console.error('MongoDB connection error:', err));
+db.once('open', () => console.log('Connected to MongoDB'));
 
 // Schemas
 const userSchema = new mongoose.Schema({
@@ -696,14 +698,18 @@ const authenticateToken = (req, res, next) => {
 // Initialize default admin user
 const initializeAdmin = async () => {
   try {
+    console.log('Checking for default admin user...');
     const adminExists = await User.findOne({ username: 'admin' });
     if (!adminExists) {
+      console.log('Creating default admin user...');
       const hashedPassword = await bcrypt.hash('admin123', 10);
       await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
       console.log('Default admin user created');
+    } else {
+      console.log('Admin user already exists');
     }
   } catch (error) {
-    console.error('Error initializing admin:', error);
+    console.error('Error initializing admin:', error.message);
   }
 };
 
@@ -721,6 +727,7 @@ app.post('/api/auth/login', [
 
   const { username, password } = req.body;
   try {
+    console.log('Attempting login for username:', username);
     const user = await User.findOne({ username });
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -736,15 +743,18 @@ app.post('/api/auth/login', [
       user: { id: user._id, username: user.username, role: user.role }
     });
   } catch (error) {
+    console.error('Login error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 app.get('/api/auth/verify', authenticateToken, async (req, res) => {
   try {
+    console.log('Verifying token for user:', req.user.username);
     const user = await User.findById(req.user.userId).select('-password');
     res.json(user);
   } catch (error) {
+    console.error('Verify error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -752,9 +762,11 @@ app.get('/api/auth/verify', authenticateToken, async (req, res) => {
 // Customer Routes
 app.get('/api/customers', authenticateToken, async (req, res) => {
   try {
+    console.log('Fetching customers...');
     const customers = await Customer.find().sort({ createdAt: -1 });
     res.json(customers);
   } catch (error) {
+    console.error('Customers fetch error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -767,10 +779,12 @@ app.post('/api/customers', authenticateToken, [
 
   const { name, phone, email, address, notes } = req.body;
   try {
+    console.log('Creating customer:', name);
     const customer = new Customer({ name, phone, email, address, notes });
     await customer.save();
     res.status(201).json(customer);
   } catch (error) {
+    console.error('Customer creation error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -784,10 +798,12 @@ app.put('/api/customers/:id', authenticateToken, [
   const { id } = req.params;
   const { name, phone, email, address, notes } = req.body;
   try {
+    console.log('Updating customer:', id);
     const customer = await Customer.findByIdAndUpdate(id, { name, phone, email, address, notes }, { new: true });
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
     res.json(customer);
   } catch (error) {
+    console.error('Customer update error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -795,10 +811,12 @@ app.put('/api/customers/:id', authenticateToken, [
 app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    console.log('Deleting customer:', id);
     const customer = await Customer.findByIdAndDelete(id);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
     res.json({ message: 'Customer deleted successfully' });
   } catch (error) {
+    console.error('Customer delete error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -806,6 +824,7 @@ app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
 app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    console.log('Fetching history for customer:', id);
     const customer = await Customer.findById(id);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
 
@@ -824,6 +843,7 @@ app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
     }));
     res.status(200).json(formattedHistory);
   } catch (error) {
+    console.error('Customer history error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -832,6 +852,7 @@ app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
 app.get('/api/sales', authenticateToken, async (req, res) => {
   const { date } = req.query;
   try {
+    console.log('Fetching sales, date filter:', date);
     let query = {};
     if (date) {
       const startDate = new Date(date);
@@ -842,6 +863,7 @@ app.get('/api/sales', authenticateToken, async (req, res) => {
     const sales = await Sale.find(query).sort({ createdAt: -1 });
     res.json(sales);
   } catch (error) {
+    console.error('Sales fetch error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -858,6 +880,7 @@ app.post('/api/sales', authenticateToken, [
 
   const { date, units, unitRate, totalBill, counterCash, customerName, customerId, notes } = req.body;
   try {
+    console.log('Creating sale for customer:', customerName || customerId);
     const sale = new Sale({ date, units, unitRate, totalBill, counterCash, customerName, customerId, notes });
     await sale.save();
 
@@ -869,6 +892,7 @@ app.post('/api/sales', authenticateToken, [
     }
     res.status(201).json(sale);
   } catch (error) {
+    console.error('Sales creation error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -886,10 +910,12 @@ app.put('/api/sales/:id', authenticateToken, [
   const { id } = req.params;
   const { date, units, unitRate, totalBill, counterCash, customerName, customerId, notes } = req.body;
   try {
+    console.log('Updating sale:', id);
     const sale = await Sale.findByIdAndUpdate(id, { date, units, unitRate, totalBill, counterCash, customerName, customerId, notes }, { new: true });
     if (!sale) return res.status(404).json({ message: 'Sale not found' });
     res.json(sale);
   } catch (error) {
+    console.error('Sales update error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -897,10 +923,12 @@ app.put('/api/sales/:id', authenticateToken, [
 app.delete('/api/sales/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    console.log('Deleting sale:', id);
     const sale = await Sale.findByIdAndDelete(id);
     if (!sale) return res.status(404).json({ message: 'Sale not found' });
     res.json({ message: 'Sale deleted successfully' });
   } catch (error) {
+    console.error('Sales delete error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -909,6 +937,7 @@ app.delete('/api/sales/:id', authenticateToken, async (req, res) => {
 app.get('/api/expenses', authenticateToken, async (req, res) => {
   const { date } = req.query;
   try {
+    console.log('Fetching expenses, date filter:', date);
     let query = {};
     if (date) {
       const startDate = new Date(date);
@@ -919,6 +948,7 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
     const expenses = await Expense.find(query).sort({ createdAt: -1 });
     res.json(expenses);
   } catch (error) {
+    console.error('Expenses fetch error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -934,10 +964,12 @@ app.post('/api/expenses', authenticateToken, [
 
   const { date, type, amount, description, notes } = req.body;
   try {
+    console.log('Creating expense for type:', type);
     const expense = new Expense({ date, type, amount, description, notes });
     await expense.save();
     res.status(201).json(expense);
   } catch (error) {
+    console.error('Expense creation error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -954,10 +986,12 @@ app.put('/api/expenses/:id', authenticateToken, [
   const { id } = req.params;
   const { date, type, amount, description, notes } = req.body;
   try {
+    console.log('Updating expense:', id);
     const expense = await Expense.findByIdAndUpdate(id, { date, type, amount, description, notes }, { new: true });
     if (!expense) return res.status(404).json({ message: 'Expense not found' });
     res.json(expense);
   } catch (error) {
+    console.error('Expense update error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -965,10 +999,12 @@ app.put('/api/expenses/:id', authenticateToken, [
 app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    console.log('Deleting expense:', id);
     const expense = await Expense.findByIdAndDelete(id);
     if (!expense) return res.status(404).json({ message: 'Expense not found' });
     res.json({ message: 'Expense deleted successfully' });
   } catch (error) {
+    console.error('Expense delete error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -976,9 +1012,11 @@ app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
 // Creditor Routes
 app.get('/api/creditors', authenticateToken, async (req, res) => {
   try {
+    console.log('Fetching creditors...');
     const creditors = await Creditor.find().sort({ isPaid: 1, createdAt: -1 });
     res.json(creditors);
   } catch (error) {
+    console.error('Creditors fetch error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -993,10 +1031,12 @@ app.post('/api/creditors', authenticateToken, [
 
   const { name, phone, billAmount, description, dueDate, notes } = req.body;
   try {
+    console.log('Creating creditor:', name);
     const creditor = new Creditor({ name, phone, billAmount, description, dueDate, notes });
     await creditor.save();
     res.status(201).json(creditor);
   } catch (error) {
+    console.error('Creditor creation error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1012,10 +1052,12 @@ app.put('/api/creditors/:id', authenticateToken, [
   const { id } = req.params;
   const { name, phone, billAmount, description, dueDate, notes } = req.body;
   try {
+    console.log('Updating creditor:', id);
     const creditor = await Creditor.findByIdAndUpdate(id, { name, phone, billAmount, description, dueDate, notes }, { new: true });
     if (!creditor) return res.status(404).json({ message: 'Creditor not found' });
     res.json(creditor);
   } catch (error) {
+    console.error('Creditor update error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1023,10 +1065,12 @@ app.put('/api/creditors/:id', authenticateToken, [
 app.patch('/api/creditors/:id/pay', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    console.log('Marking creditor as paid:', id);
     const creditor = await Creditor.findByIdAndUpdate(id, { isPaid: true, paidDate: new Date() }, { new: true });
     if (!creditor) return res.status(404).json({ message: 'Creditor not found' });
     res.json(creditor);
   } catch (error) {
+    console.error('Creditor pay error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1034,10 +1078,12 @@ app.patch('/api/creditors/:id/pay', authenticateToken, async (req, res) => {
 app.delete('/api/creditors/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
+    console.log('Deleting creditor:', id);
     const creditor = await Creditor.findByIdAndDelete(id);
     if (!creditor) return res.status(404).json({ message: 'Creditor not found' });
     res.json({ message: 'Creditor deleted successfully' });
   } catch (error) {
+    console.error('Creditor delete error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1045,6 +1091,7 @@ app.delete('/api/creditors/:id', authenticateToken, async (req, res) => {
 // Reports Routes
 app.get('/api/reports/dashboard', authenticateToken, async (req, res) => {
   try {
+    console.log('Fetching dashboard data...');
     const today = new Date();
     const startOfDay = new Date(today.setHours(0, 0, 0, 0));
     const endOfDay = new Date(today.setHours(23, 59, 59, 999));
@@ -1071,6 +1118,7 @@ app.get('/api/reports/dashboard', authenticateToken, async (req, res) => {
       profitGrowth: 0
     });
   } catch (error) {
+    console.error('Dashboard fetch error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1078,6 +1126,7 @@ app.get('/api/reports/dashboard', authenticateToken, async (req, res) => {
 app.get('/api/reports/sales', authenticateToken, async (req, res) => {
   const { startDate, endDate } = req.query;
   try {
+    console.log('Fetching sales report, range:', startDate, 'to', endDate);
     const sales = await Sale.aggregate([
       { $match: { date: { $gte: new Date(startDate), $lte: new Date(endDate) } } },
       { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, amount: { $sum: '$totalBill' }, units: { $sum: '$units' } } },
@@ -1094,6 +1143,7 @@ app.get('/api/reports/sales', authenticateToken, async (req, res) => {
       total: total[0]?.total || 0
     });
   } catch (error) {
+    console.error('Sales report error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1101,6 +1151,7 @@ app.get('/api/reports/sales', authenticateToken, async (req, res) => {
 app.get('/api/reports/expenses', authenticateToken, async (req, res) => {
   const { startDate, endDate } = req.query;
   try {
+    console.log('Fetching expenses report, range:', startDate, 'to', endDate);
     const expenses = await Expense.aggregate([
       { $match: { date: { $gte: new Date(startDate), $lte: new Date(endDate) } } },
       { $group: { _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, type: '$type' }, amount: { $sum: '$amount' } } },
@@ -1117,6 +1168,7 @@ app.get('/api/reports/expenses', authenticateToken, async (req, res) => {
       total: total[0]?.total || 0
     });
   } catch (error) {
+    console.error('Expenses report error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1124,6 +1176,7 @@ app.get('/api/reports/expenses', authenticateToken, async (req, res) => {
 app.get('/api/reports/profit', authenticateToken, async (req, res) => {
   const { period } = req.query;
   try {
+    console.log('Fetching profit report for period:', period);
     const today = new Date();
     let startDate;
     if (period === 'weekly') startDate = new Date(today.setDate(today.getDate() - 7));
@@ -1138,6 +1191,7 @@ app.get('/api/reports/profit', authenticateToken, async (req, res) => {
 
     res.json({ profit, totalSales, totalExpenses });
   } catch (error) {
+    console.error('Profit report error:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -1146,7 +1200,7 @@ app.get('/api/reports/profit', authenticateToken, async (req, res) => {
 const PORT = process.env.PORT || 3001;
 
 db.once('open', async () => {
-  console.log('Connected to MongoDB');
+  console.log('Connected to MongoDB, initializing admin...');
   await initializeAdmin();
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
