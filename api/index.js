@@ -179,6 +179,67 @@ app.get('/api/auth/verify', authenticateToken, async (req, res) => {
 });
 
 // Customer Routes
+// app.get('/api/customers', authenticateToken, async (req, res) => {
+//   try {
+//     console.log('Fetching customers...');
+//     const customers = await Customer.find().sort({ createdAt: -1 });
+//     res.json(customers);
+//   } catch (error) {
+//     console.error('Customers fetch error:', error.message);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// });
+
+// app.post('/api/customers', authenticateToken, [
+//   body('name').notEmpty().trim(),
+// ], async (req, res) => {
+//   const errors = validationResult(req);
+//   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
+
+//   const { name, phone, email, address, notes } = req.body;
+//   try {
+//     console.log('Creating customer:', name);
+//     const customer = new Customer({ name, phone, email, address, notes });
+//     await customer.save();
+//     res.status(201).json(customer);
+//   } catch (error) {
+//     console.error('Customer creation error:', error.message);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// });
+
+// app.put('/api/customers/:id', authenticateToken, [
+//   body('name').notEmpty().trim(),
+// ], async (req, res) => {
+//   const errors = validationResult(req);
+//   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
+
+//   const { id } = req.params;
+//   const { name, phone, email, address, notes } = req.body;
+//   try {
+//     console.log('Updating customer:', id);
+//     const customer = await Customer.findByIdAndUpdate(id, { name, phone, email, address, notes }, { new: true });
+//     if (!customer) return res.status(404).json({ message: 'Customer not found' });
+//     res.json(customer);
+//   } catch (error) {
+//     console.error('Customer update error:', error.message);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// });
+
+// app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
+//   const { id } = req.params;
+//   try {
+//     console.log('Deleting customer:', id);
+//     const customer = await Customer.findByIdAndDelete(id);
+//     if (!customer) return res.status(404).json({ message: 'Customer not found' });
+//     res.json({ message: 'Customer deleted successfully' });
+//   } catch (error) {
+//     console.error('Customer delete error:', error.message);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// });
+// Customer Routes
 app.get('/api/customers', authenticateToken, async (req, res) => {
   try {
     console.log('Fetching customers...');
@@ -196,10 +257,10 @@ app.post('/api/customers', authenticateToken, [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
-  const { name, phone, email, address, notes } = req.body;
+  const { name, phone, email, address, notes, unitRate } = req.body;
   try {
     console.log('Creating customer:', name);
-    const customer = new Customer({ name, phone, email, address, notes });
+    const customer = new Customer({ name, phone, email, address, notes, unitRate: unitRate ? parseFloat(unitRate) : undefined });
     await customer.save();
     res.status(201).json(customer);
   } catch (error) {
@@ -215,10 +276,10 @@ app.put('/api/customers/:id', authenticateToken, [
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
   const { id } = req.params;
-  const { name, phone, email, address, notes } = req.body;
+  const { name, phone, email, address, notes, unitRate } = req.body;
   try {
     console.log('Updating customer:', id);
-    const customer = await Customer.findByIdAndUpdate(id, { name, phone, email, address, notes }, { new: true });
+    const customer = await Customer.findByIdAndUpdate(id, { name, phone, email, address, notes, unitRate: unitRate ? parseFloat(unitRate) : undefined }, { new: true });
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
     res.json(customer);
   } catch (error) {
@@ -240,6 +301,32 @@ app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    console.log('Fetching history for customer:', id);
+    const customer = await Customer.findById(id);
+    if (!customer) return res.status(404).json({ message: 'Customer not found' });
+
+    const history = await Sale.find({ customerId: id })
+      .sort({ date: -1 })
+      .limit(10)
+      .lean();
+    const formattedHistory = history.map(sale => ({
+      _id: sale._id,
+      saleId: sale._id,
+      date: sale.date,
+      amount: sale.totalBill || 0,
+      units: sale.units || 0,
+      counterCash: sale.counterCash || 0,
+      notes: sale.notes || '-'
+    }));
+    res.status(200).json(formattedHistory);
+  } catch (error) {
+    console.error('Customer history error:', error.message);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
 app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
