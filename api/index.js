@@ -1,4 +1,3 @@
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -10,7 +9,7 @@ require('dotenv').config();
 const app = express();
 
 // CORS Configuration
-const allowedOrigins = ['https://ro-plant-frontend.vercel.app',"http://localhost:5173"];
+const allowedOrigins = ['https://ro-plant-frontend.vercel.app', 'http://localhost:5173'];
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
@@ -66,11 +65,13 @@ const salesSchema = new mongoose.Schema({
   date: { type: Date, required: true },
   units: { type: Number, required: true },
   unitRate: { type: Number, required: true },
-    totalBill: { type: Number, required: true, default: 0 }, // Ensure default value
+  totalBill: { type: Number, required: true, default: 0 },
   counterCash: { type: Number, required: true },
   customerName: String,
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
-  notes: String
+  notes: String,
+  amountLeft: { type: Number, default: 0 },
+  isCreditor: { type: Boolean, default: false }
 }, { timestamps: true });
 const Sale = mongoose.model('Sale', salesSchema);
 
@@ -288,7 +289,7 @@ app.get('/api/sales', authenticateToken, async (req, res) => {
 
 app.post('/api/sales', authenticateToken, [
   body('date').notEmpty().isISO8601(),
-  body('units').notEmpty().isInt({ min: 1 }),
+  body('units').notEmpty().isInt({ min: 0 }),
   body('unitRate').notEmpty().isFloat({ min: 0 }),
   body('totalBill').notEmpty().isFloat({ min: 0 }),
   body('counterCash').notEmpty().isFloat({ min: 0 }),
@@ -296,10 +297,16 @@ app.post('/api/sales', authenticateToken, [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
-  const { date, units, unitRate, totalBill, counterCash, customerName, customerId, notes } = req.body;
+  const { date, units, unitRate, totalBill, counterCash, customerName, customerId, notes, isCreditor } = req.body;
   try {
     console.log('Creating sale for customer:', customerName || customerId);
-    const sale = new Sale({ date, units, unitRate, totalBill, counterCash, customerName, customerId, notes });
+    let saleCustomerName = customerName;
+    if (customerId) {
+      const customer = await Customer.findById(customerId);
+      saleCustomerName = customer ? customer.name : customerName;
+    }
+    const amountLeft = isCreditor ? Math.max(0, totalBill - counterCash) : 0;
+    const sale = new Sale({ date, units, unitRate, totalBill, counterCash, customerName: saleCustomerName, customerId, notes, isCreditor, amountLeft });
     await sale.save();
 
     if (customerId) {
@@ -317,7 +324,7 @@ app.post('/api/sales', authenticateToken, [
 
 app.put('/api/sales/:id', authenticateToken, [
   body('date').notEmpty().isISO8601(),
-  body('units').notEmpty().isInt({ min: 1 }),
+  body('units').notEmpty().isInt({ min: 0 }),
   body('unitRate').notEmpty().isFloat({ min: 0 }),
   body('totalBill').notEmpty().isFloat({ min: 0 }),
   body('counterCash').notEmpty().isFloat({ min: 0 }),
@@ -326,10 +333,16 @@ app.put('/api/sales/:id', authenticateToken, [
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
 
   const { id } = req.params;
-  const { date, units, unitRate, totalBill, counterCash, customerName, customerId, notes } = req.body;
+  const { date, units, unitRate, totalBill, counterCash, customerName, customerId, notes, isCreditor } = req.body;
   try {
     console.log('Updating sale:', id);
-    const sale = await Sale.findByIdAndUpdate(id, { date, units, unitRate, totalBill, counterCash, customerName, customerId, notes }, { new: true });
+    let saleCustomerName = customerName;
+    if (customerId) {
+      const customer = await Customer.findById(customerId);
+      saleCustomerName = customer ? customer.name : customerName;
+    }
+    const amountLeft = isCreditor ? Math.max(0, totalBill - counterCash) : 0;
+    const sale = await Sale.findByIdAndUpdate(id, { date, units, unitRate, totalBill, counterCash, customerName: saleCustomerName, customerId, notes, isCreditor, amountLeft }, { new: true });
     if (!sale) return res.status(404).json({ message: 'Sale not found' });
     res.json(sale);
   } catch (error) {
@@ -515,8 +528,8 @@ app.get('/api/reports/dashboard', authenticateToken, async (req, res) => {
     const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
     const [todaySales, todayExpenses, totalCustomers, pendingCreditors] = await Promise.all([
-      Sale.aggregate([{ $match: { date: { $gte: startOfDay, $lte: endOfDay } } }, { $group: { _id: null, total: { $sum: '$totalBill' } } }]),
-      Expense.aggregate([{ $match: { date: { $gte: startOfDay, $lte: endOfDay } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Sale.aggregate([{ $match: { date: { $gte: startOfDay, $lt: endOfDay } } }, { $group: { _id: null, total: { $sum: '$totalBill' } } }]),
+      Expense.aggregate([{ $match: { date: { $gte: startOfDay, $lt: endOfDay } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       Customer.countDocuments(),
       Creditor.countDocuments({ isPaid: false })
     ]);
