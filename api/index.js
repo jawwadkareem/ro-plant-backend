@@ -239,6 +239,33 @@ app.get('/api/auth/verify', authenticateToken, async (req, res) => {
 //     res.status(500).json({ message: 'Server error', error: error.message });
 //   }
 // });
+
+// app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
+//   const { id } = req.params;
+//   try {
+//     console.log('Fetching history for customer:', id);
+//     const customer = await Customer.findById(id);
+//     if (!customer) return res.status(404).json({ message: 'Customer not found' });
+
+//     const history = await Sale.find({ customerId: id })
+//       .sort({ date: -1 })
+//       .limit(10)
+//       .lean();
+//     const formattedHistory = history.map(sale => ({
+//       _id: sale._id,
+//       saleId: sale._id,
+//       date: sale.date,
+//       amount: sale.totalBill || 0,
+//       units: sale.units || 0,
+//       counterCash: sale.counterCash || 0,
+//       notes: sale.notes || '-'
+//     }));
+//     res.status(200).json(formattedHistory);
+//   } catch (error) {
+//     console.error('Customer history error:', error.message);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// });
 // Customer Routes
 app.get('/api/customers', authenticateToken, async (req, res) => {
   try {
@@ -327,33 +354,6 @@ app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-app.get('/api/customers/:id/history', authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  try {
-    console.log('Fetching history for customer:', id);
-    const customer = await Customer.findById(id);
-    if (!customer) return res.status(404).json({ message: 'Customer not found' });
-
-    const history = await Sale.find({ customerId: id })
-      .sort({ date: -1 })
-      .limit(10)
-      .lean();
-    const formattedHistory = history.map(sale => ({
-      _id: sale._id,
-      saleId: sale._id,
-      date: sale.date,
-      amount: sale.totalBill || 0,
-      units: sale.units || 0,
-      counterCash: sale.counterCash || 0,
-      notes: sale.notes || '-'
-    }));
-    res.status(200).json(formattedHistory);
-  } catch (error) {
-    console.error('Customer history error:', error.message);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
 // Sales Routes
 app.get('/api/sales', authenticateToken, async (req, res) => {
   const { date } = req.query;
